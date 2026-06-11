@@ -117,7 +117,9 @@ function TradingViewChart({ symbol, interval = "5" }: { symbol: string; interval
     }
 
     return () => {
-      container.innerHTML = "";
+      if (container) {
+        container.innerHTML = "";
+      }
       widgetRef.current = null;
     };
   }, [symbol, interval]);
