@@ -5,6 +5,19 @@ const MAX_LOSS = 3000;
 const MAX_MINIS = 6;
 const MAX_MICROS = 60;
 
+interface Trade {
+  id: number;
+  date: string;
+  instrument: string;
+  direction: string;
+  contracts: number | string;
+  entry: string;
+  exit: string;
+  strategy: string;
+  notes: string;
+  emotion: string;
+}
+
 const INSTRUMENTS = [
   { value: "MES", label: "MES (Micro E-mini S&P)", type: "micro", tvSymbol: "CME:MES1!", pointValue: 5 },
   { value: "MNQ", label: "MNQ (Micro Nasdaq)",     type: "micro", tvSymbol: "CME:MNQ1!", pointValue: 2 },
@@ -30,7 +43,7 @@ const emptyForm = {
   emotion: "Neutral",
 };
 
-function pnl(trade) {
+function pnl(trade: Trade) {
   const inst = INSTRUMENTS.find(i => i.value === trade.instrument);
   if (!inst || !trade.entry || !trade.exit) return 0;
   const diff = trade.direction === "Long"
@@ -40,9 +53,9 @@ function pnl(trade) {
 }
 
 // ── TradingView Widget ────────────────────────────────────────────
-function TradingViewChart({ symbol, interval = "5" }) {
-  const containerRef = useRef(null);
-  const widgetRef = useRef(null);
+function TradingViewChart({ symbol, interval = "5" }: { symbol: string; interval?: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const widgetRef = useRef<any>(null);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -65,8 +78,8 @@ function TradingViewChart({ symbol, interval = "5" }) {
     script.src = "https://s3.tradingview.com/tv.js";
     script.async = true;
     script.onload = () => {
-      if (window.TradingView) {
-        widgetRef.current = new window.TradingView.widget({
+      if ((window as any).TradingView) {
+        widgetRef.current = new (window as any).TradingView.widget({
           container_id: divId,
           symbol: symbol,
           interval: interval,
@@ -97,7 +110,7 @@ function TradingViewChart({ symbol, interval = "5" }) {
     };
 
     // Check if already loaded
-    if (window.TradingView) {
+    if ((window as any).TradingView) {
       script.onload();
     } else {
       document.head.appendChild(script);
@@ -115,7 +128,7 @@ function TradingViewChart({ symbol, interval = "5" }) {
 }
 
 // ── Gauge ─────────────────────────────────────────────────────────
-function PnLGauge({ value }) {
+function PnLGauge({ value }: { value: number }) {
   const total = GOAL + MAX_LOSS;
   const zero = MAX_LOSS / total;
   const clampedVal = Math.max(-MAX_LOSS, Math.min(GOAL, value));
@@ -155,7 +168,7 @@ function PnLGauge({ value }) {
   );
 }
 
-function StatBox({ label, value, color, sub }) {
+function StatBox({ label, value, color, sub }: { label: string; value: string | number; color?: string; sub?: string }) {
   return (
     <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 6, padding: "12px 16px", flex: 1, minWidth: 90 }}>
       <div style={{ fontSize: 10, color: "#64748b", fontFamily: "monospace", textTransform: "uppercase", letterSpacing: 1 }}>{label}</div>
@@ -167,11 +180,11 @@ function StatBox({ label, value, color, sub }) {
 
 // ── Main App ──────────────────────────────────────────────────────
 export default function TradingJournal() {
-  const [trades, setTrades] = useState([]);
-  const [form, setForm] = useState(emptyForm);
+  const [trades, setTrades] = useState<Trade[]>([]);
+  const [form, setForm] = useState<Trade>(emptyForm as any);
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [editId, setEditId] = useState(null);
-  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [chartInterval, setChartInterval] = useState("5");
   // chartSymbol follows the selected instrument in Log tab, or last logged trade on Dashboard
   const [chartSymbol, setChartSymbol] = useState("CME:MES1!");
@@ -208,26 +221,26 @@ export default function TradingJournal() {
     } else {
       setTrades(prev => [...prev, { ...form, id: Date.now() }]);
     }
-    setForm(prev => ({ ...emptyForm, date: prev.date, instrument: prev.instrument }));
+    setForm(prev => ({ ...emptyForm, date: prev.date, instrument: prev.instrument } as any));
   }
 
-  function handleEdit(trade) {
+  function handleEdit(trade: Trade) {
     setForm({ ...trade });
     setEditId(trade.id);
     setActiveTab("log");
   }
 
-  const set = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
+  const set = (k: keyof Trade, v: any) => setForm(prev => ({ ...prev, [k]: v }));
 
-  const inputStyle = { background: "#0f172a", border: "1px solid #1e293b", color: "#e2e8f0", borderRadius: 4, padding: "7px 10px", fontFamily: "monospace", fontSize: 13, width: "100%", boxSizing: "border-box", outline: "none" };
-  const inp = (key, type = "text", extra = {}) => <input type={type} value={form[key]} onChange={e => set(key, e.target.value)} style={{ ...inputStyle, ...extra }} />;
-  const sel = (key, opts) => (
-    <select value={form[key]} onChange={e => set(key, e.target.value)} style={inputStyle}>
+  const inputStyle: React.CSSProperties = { background: "#0f172a", border: "1px solid #1e293b", color: "#e2e8f0", borderRadius: 4, padding: "7px 10px", fontFamily: "monospace", fontSize: 13, width: "100%", boxSizing: "border-box", outline: "none" };
+  const inp = (key: keyof Trade, type = "text", extra = {}) => <input type={type} value={(form as any)[key]} onChange={e => set(key, e.target.value)} style={{ ...inputStyle, ...extra }} />;
+  const sel = (key: keyof Trade, opts: any[]) => (
+    <select value={(form as any)[key]} onChange={e => set(key, e.target.value)} style={inputStyle}>
       {opts.map(o => <option key={o.value ?? o} value={o.value ?? o}>{o.label ?? o}</option>)}
     </select>
   );
-  const lbl = text => <div style={{ fontSize: 11, color: "#475569", fontFamily: "monospace", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>{text}</div>;
-  const tabBtn = (id, text) => (
+  const lbl = (text: string) => <div style={{ fontSize: 11, color: "#475569", fontFamily: "monospace", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>{text}</div>;
+  const tabBtn = (id: string, text: string) => (
     <button onClick={() => setActiveTab(id)} style={{ background: activeTab === id ? "#06b6d4" : "transparent", color: activeTab === id ? "#0f172a" : "#64748b", border: "none", padding: "8px 18px", borderRadius: 4, fontFamily: "monospace", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
       {text}
     </button>
@@ -401,7 +414,7 @@ export default function TradingJournal() {
                 {editId ? "SAVE CHANGES" : "LOG TRADE"}
               </button>
               {editId && (
-                <button onClick={() => { setEditId(null); setForm(emptyForm); }}
+                <button onClick={() => { setEditId(null); setForm(emptyForm as any); }}
                   style={{ background: "transparent", color: "#64748b", border: "1px solid #1e293b", padding: "9px 14px", borderRadius: 4, fontFamily: "monospace", fontSize: 13, cursor: "pointer" }}>
                   CANCEL
                 </button>
