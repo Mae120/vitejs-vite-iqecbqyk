@@ -200,6 +200,7 @@ export default function TradingJournal() {
 
   const fetchTrades = async () => {
     const { data, error } = await supabase.from('trades').select('*').order('date', { ascending: false });
+    if (error) console.error(error);
     if (data) setTrades(data as Trade[]);
   };
 
