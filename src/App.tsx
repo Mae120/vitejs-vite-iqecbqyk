@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 
 const GOAL = 9000;
 const MAX_LOSS = 3000;
@@ -18,7 +18,15 @@ interface Trade {
   emotion: string;
 }
 
-const INSTRUMENTS = [
+interface Instrument {
+  value: string;
+  label: string;
+  type: string;
+  tvSymbol: string;
+  pointValue: number;
+}
+
+const INSTRUMENTS: Instrument[] = [
   { value: "MES", label: "MES (Micro E-mini S&P)", type: "micro", tvSymbol: "CME:MES1!", pointValue: 5 },
   { value: "MNQ", label: "MNQ (Micro Nasdaq)",     type: "micro", tvSymbol: "CME:MNQ1!", pointValue: 2 },
   { value: "MYM", label: "MYM (Micro Dow)",         type: "micro", tvSymbol: "CME:MYM1!", pointValue: 0.5 },
@@ -31,7 +39,7 @@ const INSTRUMENTS = [
 
 const STRATEGIES = ["Trend Following", "Mean Reversion", "Breakout", "Scalp", "VWAP Fade", "Opening Range", "News Play", "Other"];
 
-const emptyForm = {
+const emptyForm: Omit<Trade, "id"> = {
   date: new Date().toISOString().split("T")[0],
   instrument: "MES",
   direction: "Long",
@@ -43,7 +51,7 @@ const emptyForm = {
   emotion: "Neutral",
 };
 
-function pnl(trade: Trade) {
+function pnl(trade: Trade | Omit<Trade, "id">) {
   const inst = INSTRUMENTS.find(i => i.value === trade.instrument);
   if (!inst || !trade.entry || !trade.exit) return 0;
   const diff = trade.direction === "Long"
@@ -55,7 +63,7 @@ function pnl(trade: Trade) {
 // ── TradingView Widget ────────────────────────────────────────────
 function TradingViewChart({ symbol, interval = "5" }: { symbol: string; interval?: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const widgetRef = useRef<any>(null);
+  const widgetRef = useRef<unknown>(null);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -78,8 +86,9 @@ function TradingViewChart({ symbol, interval = "5" }: { symbol: string; interval
     script.src = "https://s3.tradingview.com/tv.js";
     script.async = true;
     script.onload = () => {
-      if ((window as any).TradingView) {
-        widgetRef.current = new (window as any).TradingView.widget({
+      const win = window as unknown as { TradingView: { widget: new (config: unknown) => unknown } };
+      if (win.TradingView) {
+        widgetRef.current = new win.TradingView.widget({
           container_id: divId,
           symbol: symbol,
           interval: interval,
@@ -110,8 +119,9 @@ function TradingViewChart({ symbol, interval = "5" }: { symbol: string; interval
     };
 
     // Check if already loaded
-    if ((window as any).TradingView) {
-      script.onload();
+    if ((window as unknown as { TradingView?: unknown }).TradingView) {
+      const loadEvent = new Event("load");
+      script.dispatchEvent(loadEvent);
     } else {
       document.head.appendChild(script);
     }
@@ -182,14 +192,24 @@ function StatBox({ label, value, color, sub }: { label: string; value: string | 
 
 // ── Main App ──────────────────────────────────────────────────────
 export default function TradingJournal() {
-  const [trades, setTrades] = useState<Trade[]>([]);
-  const [form, setForm] = useState<Trade>(emptyForm as any);
+  const [trades, setTrades] = useState<Trade[]>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("trading_trades");
+      if (saved) return JSON.parse(saved);
+    }
+    return [];
+  });
+  const [form, setForm] = useState<Trade | Omit<Trade, "id">>(emptyForm);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [editId, setEditId] = useState<number | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [chartInterval, setChartInterval] = useState("5");
   // chartSymbol follows the selected instrument in Log tab, or last logged trade on Dashboard
   const [chartSymbol, setChartSymbol] = useState("CME:MES1!");
+
+  useEffect(() => {
+    localStorage.setItem("trading_trades", JSON.stringify(trades));
+  }, [trades]);
 
   const totalPnL = useMemo(() => trades.reduce((s, t) => s + pnl(t), 0), [trades]);
   const winners = useMemo(() => trades.filter(t => pnl(t) > 0), [trades]);
@@ -218,12 +238,12 @@ export default function TradingJournal() {
     if (inst?.type === "mini"  && miniUsed  + Number(form.contracts) > MAX_MINIS)  { alert(`Mini limit: max ${MAX_MINIS}/day`);  return; }
     if (inst?.type === "micro" && microUsed + Number(form.contracts) > MAX_MICROS) { alert(`Micro limit: max ${MAX_MICROS}/day`); return; }
     if (editId !== null) {
-      setTrades(prev => prev.map(t => t.id === editId ? { ...form, id: editId } : t));
+      setTrades(prev => prev.map(t => t.id === editId ? { ...form, id: editId } as Trade : t));
       setEditId(null);
     } else {
-      setTrades(prev => [...prev, { ...form, id: Date.now() }]);
+      setTrades(prev => [...prev, { ...form, id: Date.now() } as Trade]);
     }
-    setForm(prev => ({ ...emptyForm, date: prev.date, instrument: prev.instrument } as any));
+    setForm(prev => ({ ...emptyForm, date: prev.date, instrument: prev.instrument }));
   }
 
   function handleEdit(trade: Trade) {
@@ -232,13 +252,17 @@ export default function TradingJournal() {
     setActiveTab("log");
   }
 
-  const set = (k: keyof Trade, v: any) => setForm(prev => ({ ...prev, [k]: v }));
+  const set = (k: keyof Trade, v: string | number) => setForm(prev => ({ ...prev, [k]: v }));
 
   const inputStyle: React.CSSProperties = { background: "#0f172a", border: "1px solid #1e293b", color: "#e2e8f0", borderRadius: 4, padding: "7px 10px", fontFamily: "monospace", fontSize: 13, width: "100%", boxSizing: "border-box", outline: "none" };
-  const inp = (key: keyof Trade, type = "text", extra = {}) => <input type={type} value={(form as any)[key]} onChange={e => set(key, e.target.value)} style={{ ...inputStyle, ...extra }} />;
-  const sel = (key: keyof Trade, opts: any[]) => (
-    <select value={(form as any)[key]} onChange={e => set(key, e.target.value)} style={inputStyle}>
-      {opts.map(o => <option key={o.value ?? o} value={o.value ?? o}>{o.label ?? o}</option>)}
+  const inp = (key: keyof Trade, type = "text", extra = {}) => <input type={type} value={(form as Record<string, string | number>)[key]} onChange={e => set(key, e.target.value)} style={{ ...inputStyle, ...extra }} />;
+  const sel = (key: keyof Trade, opts: (string | { value: string; label: string })[]) => (
+    <select value={(form as Record<string, string | number>)[key]} onChange={e => set(key, e.target.value)} style={inputStyle}>
+      {opts.map(o => {
+        const val = typeof o === "string" ? o : o.value;
+        const lab = typeof o === "string" ? o : o.label;
+        return <option key={val} value={val}>{lab}</option>;
+      })}
     </select>
   );
   const lbl = (text: string) => <div style={{ fontSize: 11, color: "#475569", fontFamily: "monospace", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>{text}</div>;
@@ -416,7 +440,7 @@ export default function TradingJournal() {
                 {editId ? "SAVE CHANGES" : "LOG TRADE"}
               </button>
               {editId && (
-                <button onClick={() => { setEditId(null); setForm(emptyForm as any); }}
+                <button onClick={() => { setEditId(null); setForm(emptyForm); }}
                   style={{ background: "transparent", color: "#64748b", border: "1px solid #1e293b", padding: "9px 14px", borderRadius: 4, fontFamily: "monospace", fontSize: 13, cursor: "pointer" }}>
                   CANCEL
                 </button>
