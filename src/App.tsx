@@ -1,4 +1,9 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+const SUPABASE_URL = "https://ldczvaiyavsgryotvutb.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxkY3p2YWl5YXZzZ3J5b3R2dXRiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1MzM0NDIsImV4cCI6MjA5NzEwOTQ0Mn0.2-aADYM6JreOyXWepPQZN9LERfVF7VcOod0rTpQP9j4";
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const GOAL = 9000;
 const MAX_LOSS = 3000;
@@ -60,16 +65,14 @@ function pnl(trade: Trade | Omit<Trade, "id">) {
   return diff * Number(trade.contracts) * inst.pointValue;
 }
 
-// ── TradingView Widget ────────────────────────────────────────────
 function TradingViewChart({ symbol, interval = "5" }: { symbol: string; interval?: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const widgetRef = useRef<unknown>(null);
+  const widgetRef = useRef<any>(null);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    // Remove old widget
     if (widgetRef.current) {
       container.innerHTML = "";
       widgetRef.current = null;
@@ -86,7 +89,7 @@ function TradingViewChart({ symbol, interval = "5" }: { symbol: string; interval
     script.src = "https://s3.tradingview.com/tv.js";
     script.async = true;
     script.onload = () => {
-      const win = window as unknown as { TradingView: { widget: new (config: unknown) => unknown } };
+      const win = window as any;
       if (win.TradingView) {
         widgetRef.current = new win.TradingView.widget({
           container_id: divId,
@@ -118,8 +121,7 @@ function TradingViewChart({ symbol, interval = "5" }: { symbol: string; interval
       }
     };
 
-    // Check if already loaded
-    if ((window as unknown as { TradingView?: unknown }).TradingView) {
+    if ((window as any).TradingView) {
       const loadEvent = new Event("load");
       script.dispatchEvent(loadEvent);
     } else {
@@ -134,12 +136,9 @@ function TradingViewChart({ symbol, interval = "5" }: { symbol: string; interval
     };
   }, [symbol, interval]);
 
-  return (
-    <div ref={containerRef} style={{ width: "100%", height: "100%" }} />
-  );
+  return <div ref={containerRef} style={{ width: "100%", height: "100%" }} />;
 }
 
-// ── Gauge ─────────────────────────────────────────────────────────
 function PnLGauge({ value }: { value: number }) {
   const total = GOAL + MAX_LOSS;
   const zero = MAX_LOSS / total;
@@ -190,26 +189,23 @@ function StatBox({ label, value, color, sub }: { label: string; value: string | 
   );
 }
 
-// ── Main App ──────────────────────────────────────────────────────
 export default function TradingJournal() {
-  const [trades, setTrades] = useState<Trade[]>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("trading_trades");
-      if (saved) return JSON.parse(saved);
-    }
-    return [];
-  });
+  const [trades, setTrades] = useState<Trade[]>([]);
   const [form, setForm] = useState<Trade | Omit<Trade, "id">>(emptyForm);
   const [activeTab, setActiveTab] = useState("dashboard");
   const [editId, setEditId] = useState<number | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const [chartInterval, setChartInterval] = useState("5");
-  // chartSymbol follows the selected instrument in Log tab, or last logged trade on Dashboard
   const [chartSymbol, setChartSymbol] = useState("CME:MES1!");
 
+  const fetchTrades = async () => {
+    const { data, error } = await supabase.from('trades').select('*').order('date', { ascending: false });
+    if (data) setTrades(data as Trade[]);
+  };
+
   useEffect(() => {
-    localStorage.setItem("trading_trades", JSON.stringify(trades));
-  }, [trades]);
+    fetchTrades();
+  }, []);
 
   const totalPnL = useMemo(() => trades.reduce((s, t) => s + pnl(t), 0), [trades]);
   const winners = useMemo(() => trades.filter(t => pnl(t) > 0), [trades]);
@@ -226,24 +222,38 @@ export default function TradingJournal() {
   const miniUsed  = todayTrades.reduce((s, t) => INSTRUMENTS.find(i => i.value === t.instrument)?.type === "mini"  ? s + Number(t.contracts) : s, 0);
   const microUsed = todayTrades.reduce((s, t) => INSTRUMENTS.find(i => i.value === t.instrument)?.type === "micro" ? s + Number(t.contracts) : s, 0);
 
-  // Sync chart symbol when instrument changes in form
   useEffect(() => {
     const inst = INSTRUMENTS.find(i => i.value === form.instrument);
     if (inst) setChartSymbol(inst.tvSymbol);
   }, [form.instrument]);
 
-  function handleSubmit() {
+  async function handleSubmit() {
     if (!form.entry || !form.exit) return;
     const inst = INSTRUMENTS.find(i => i.value === form.instrument);
     if (inst?.type === "mini"  && miniUsed  + Number(form.contracts) > MAX_MINIS)  { alert(`Mini limit: max ${MAX_MINIS}/day`);  return; }
     if (inst?.type === "micro" && microUsed + Number(form.contracts) > MAX_MICROS) { alert(`Micro limit: max ${MAX_MICROS}/day`); return; }
+    
     if (editId !== null) {
-      setTrades(prev => prev.map(t => t.id === editId ? { ...form, id: editId } as Trade : t));
-      setEditId(null);
+      const { error } = await supabase.from('trades').update(form).eq('id', editId);
+      if (!error) {
+        setEditId(null);
+        fetchTrades();
+      }
     } else {
-      setTrades(prev => [...prev, { ...form, id: Date.now() } as Trade]);
+      const { error } = await supabase.from('trades').insert([form]);
+      if (!error) {
+        fetchTrades();
+      }
     }
     setForm(prev => ({ ...emptyForm, date: prev.date, instrument: prev.instrument }));
+  }
+
+  async function handleDelete(id: number) {
+    const { error } = await supabase.from('trades').delete().eq('id', id);
+    if (!error) {
+      fetchTrades();
+      setDeleteConfirm(null);
+    }
   }
 
   function handleEdit(trade: Trade) {
@@ -255,9 +265,9 @@ export default function TradingJournal() {
   const set = (k: keyof Trade, v: string | number) => setForm(prev => ({ ...prev, [k]: v }));
 
   const inputStyle: React.CSSProperties = { background: "#0f172a", border: "1px solid #1e293b", color: "#e2e8f0", borderRadius: 4, padding: "7px 10px", fontFamily: "monospace", fontSize: 13, width: "100%", boxSizing: "border-box", outline: "none" };
-  const inp = (key: keyof Trade, type = "text", extra = {}) => <input type={type} value={(form as Record<string, string | number>)[key]} onChange={e => set(key, e.target.value)} style={{ ...inputStyle, ...extra }} />;
+  const inp = (key: keyof Trade, type = "text", extra = {}) => <input type={type} value={(form as Record<string, any>)[key]} onChange={e => set(key, e.target.value)} style={{ ...inputStyle, ...extra }} />;
   const sel = (key: keyof Trade, opts: (string | { value: string; label: string })[]) => (
-    <select value={(form as Record<string, string | number>)[key]} onChange={e => set(key, e.target.value)} style={inputStyle}>
+    <select value={(form as Record<string, any>)[key]} onChange={e => set(key, e.target.value)} style={inputStyle}>
       {opts.map(o => {
         const val = typeof o === "string" ? o : o.value;
         const lab = typeof o === "string" ? o : o.label;
@@ -281,7 +291,6 @@ export default function TradingJournal() {
 
   return (
     <div style={{ minHeight: "100vh", background: "#020817", color: "#e2e8f0", fontFamily: "'Inter', system-ui, sans-serif" }}>
-      {/* Header */}
       <div style={{ borderBottom: "1px solid #0f172a", padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
           <div style={{ fontFamily: "monospace", fontSize: 16, fontWeight: 700, color: "#06b6d4", letterSpacing: 2 }}>⬡ PAPER TRADING JOURNAL</div>
@@ -293,9 +302,7 @@ export default function TradingJournal() {
         </div>
       </div>
 
-      {/* Chart Bar — always visible */}
       <div style={{ borderBottom: "1px solid #0f172a", background: "#060f1e" }}>
-        {/* Symbol + interval selector */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 20px", flexWrap: "wrap" }}>
           <div style={{ fontFamily: "monospace", fontSize: 12, color: "#06b6d4", fontWeight: 700 }}>{currentInst.value}</div>
           <div style={{ fontFamily: "monospace", fontSize: 11, color: "#334155" }}>{chartSymbol}</div>
@@ -306,7 +313,6 @@ export default function TradingJournal() {
               </button>
             ))}
           </div>
-          {/* Quick symbol switcher */}
           <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
             {INSTRUMENTS.map(inst => (
               <button key={inst.value} onClick={() => setChartSymbol(inst.tvSymbol)} style={{ background: chartSymbol === inst.tvSymbol ? "#1e3a4a" : "transparent", color: chartSymbol === inst.tvSymbol ? "#06b6d4" : "#334155", border: `1px solid ${chartSymbol === inst.tvSymbol ? "#06b6d4" : "#1e293b"}`, borderRadius: 3, padding: "3px 8px", fontFamily: "monospace", fontSize: 10, cursor: "pointer" }}>
@@ -315,22 +321,18 @@ export default function TradingJournal() {
             ))}
           </div>
         </div>
-        {/* Chart */}
         <div style={{ height: 420, width: "100%", position: "relative" }}>
           <TradingViewChart symbol={chartSymbol} interval={chartInterval} />
         </div>
       </div>
 
-      {/* Main content */}
       <div style={{ padding: "16px 20px", maxWidth: 960, margin: "0 auto" }}>
-        {/* Tabs */}
         <div style={{ display: "flex", gap: 4, marginBottom: 16, background: "#0a1120", padding: 4, borderRadius: 6, width: "fit-content" }}>
           {tabBtn("dashboard", "Dashboard")}
           {tabBtn("log", editId ? "✏ Edit Trade" : "Log Trade")}
           {tabBtn("history", `History (${trades.length})`)}
         </div>
 
-        {/* ── DASHBOARD ── */}
         {activeTab === "dashboard" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div style={{ background: "#0a1120", border: "1px solid #0f172a", borderRadius: 8, padding: 18 }}>
@@ -349,7 +351,6 @@ export default function TradingJournal() {
               <StatBox label="Avg Loss" value={`$${parseFloat(avgLoss).toLocaleString()}`} color="#ef4444" />
             </div>
 
-            {/* Contract bars */}
             <div style={{ background: "#0a1120", border: "1px solid #0f172a", borderRadius: 8, padding: 18 }}>
               <div style={{ fontSize: 10, color: "#475569", fontFamily: "monospace", textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>Today's Contract Usage</div>
               <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
@@ -403,7 +404,6 @@ export default function TradingJournal() {
           </div>
         )}
 
-        {/* ── LOG TRADE ── */}
         {activeTab === "log" && (
           <div style={{ background: "#0a1120", border: "1px solid #0f172a", borderRadius: 8, padding: 22, maxWidth: 540 }}>
             <div style={{ fontSize: 12, color: "#06b6d4", fontFamily: "monospace", marginBottom: 18, fontWeight: 600 }}>
@@ -420,7 +420,7 @@ export default function TradingJournal() {
               <div>{lbl("Emotion")}{sel("emotion", ["Calm", "Neutral", "Anxious", "Confident", "FOMO", "Revenge"])}</div>
               <div style={{ gridColumn: "1/-1" }}>
                 {lbl("Notes")}
-                <textarea value={form.notes} onChange={e => set("notes", e.target.value)} rows={3}
+                <textarea value={form.notes} onChange={e => set("notes", (e.target as any).value)} rows={3}
                   style={{ ...inputStyle, resize: "vertical" }}
                   placeholder="Setup, execution, lessons learned..." />
               </div>
@@ -449,7 +449,6 @@ export default function TradingJournal() {
           </div>
         )}
 
-        {/* ── HISTORY ── */}
         {activeTab === "history" && (
           <div>
             {trades.length === 0 ? (
@@ -481,7 +480,7 @@ export default function TradingJournal() {
                           <button onClick={() => handleEdit(t)} style={{ background: "transparent", border: "1px solid #1e293b", color: "#64748b", padding: "3px 10px", borderRadius: 3, fontFamily: "monospace", fontSize: 11, cursor: "pointer" }}>EDIT</button>
                           {deleteConfirm === t.id ? (
                             <>
-                              <button onClick={() => { setTrades(prev => prev.filter(x => x.id !== t.id)); setDeleteConfirm(null); }} style={{ background: "#ef4444", border: "none", color: "#fff", padding: "3px 10px", borderRadius: 3, fontFamily: "monospace", fontSize: 11, cursor: "pointer" }}>CONFIRM</button>
+                              <button onClick={() => handleDelete(t.id)} style={{ background: "#ef4444", border: "none", color: "#fff", padding: "3px 10px", borderRadius: 3, fontFamily: "monospace", fontSize: 11, cursor: "pointer" }}>CONFIRM</button>
                               <button onClick={() => setDeleteConfirm(null)} style={{ background: "transparent", border: "1px solid #1e293b", color: "#64748b", padding: "3px 8px", borderRadius: 3, fontFamily: "monospace", fontSize: 11, cursor: "pointer" }}>✕</button>
                             </>
                           ) : (
