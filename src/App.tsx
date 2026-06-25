@@ -59,9 +59,15 @@ const emptyForm: Omit<Trade, "id"> = {
 function pnl(trade: Trade | Omit<Trade, "id">) {
   const inst = INSTRUMENTS.find(i => i.value === trade.instrument);
   if (!inst || !trade.entry || !trade.exit) return 0;
-  const diff = trade.direction === "Long"
-    ? parseFloat(trade.exit) - parseFloat(trade.entry)
-    : parseFloat(trade.entry) - parseFloat(trade.exit);
+  
+  const entry = parseFloat(trade.entry);
+  const exit = parseFloat(trade.exit);
+  const direction = (trade.direction || "").trim().toLowerCase();
+  
+  const diff = direction === "long"
+    ? exit - entry
+    : entry - exit;
+    
   return diff * Number(trade.contracts) * inst.pointValue;
 }
 
@@ -171,7 +177,7 @@ function PnLGauge({ value }: { value: number }) {
         }} />
       </div>
       <div style={{ textAlign: "center", marginTop: 8, fontFamily: "monospace", fontSize: 22, fontWeight: 700, color: gaugeColor, letterSpacing: 1 }}>
-        {value >= 0 ? "+" : ""}${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        {value >= 0 ? "+" : "-"}${Math.abs(value).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         {isGoal && <span style={{ marginLeft: 8, fontSize: 14 }}>🎯 GOAL!</span>}
         {isWipeout && <span style={{ marginLeft: 8, fontSize: 14 }}>⛔ LIMIT HIT</span>}
       </div>
@@ -390,12 +396,12 @@ export default function TradingJournal() {
                       <div style={{ fontFamily: "monospace", fontSize: 12 }}>
                         <span style={{ color: "#64748b", marginRight: 8 }}>{t.date}</span>
                         <span style={{ color: "#e2e8f0" }}>{t.instrument}</span>
-                        <span style={{ color: t.direction === "Long" ? "#22c55e" : "#f97316", marginLeft: 8, fontSize: 11 }}>{t.direction.toUpperCase()}</span>
+                        <span style={{ color: (t.direction || "").trim().toLowerCase() === "long" ? "#22c55e" : "#f97316", marginLeft: 8, fontSize: 11 }}>{t.direction.toUpperCase()}</span>
                         <span style={{ color: "#475569", marginLeft: 8 }}>×{t.contracts}</span>
                         <span style={{ color: "#334155", marginLeft: 8, fontSize: 10 }}>↑ chart</span>
                       </div>
                       <span style={{ fontFamily: "monospace", fontWeight: 700, color: p >= 0 ? "#22c55e" : "#ef4444" }}>
-                        {p >= 0 ? "+" : ""}${p.toFixed(2)}
+                        {p >= 0 ? "+" : "-"}${Math.abs(p).toFixed(2)}
                       </span>
                     </div>
                   );
@@ -430,7 +436,7 @@ export default function TradingJournal() {
             {form.entry && form.exit && (
               <div style={{ marginTop: 12, padding: "9px 12px", background: "#0f172a", borderRadius: 4, fontFamily: "monospace", fontSize: 13 }}>
                 Est. P&L: <span style={{ color: pnl(form) >= 0 ? "#22c55e" : "#ef4444", fontWeight: 700 }}>
-                  {pnl(form) >= 0 ? "+" : ""}${pnl(form).toFixed(2)}
+                  {pnl(form) >= 0 ? "+" : "-"}${Math.abs(pnl(form)).toFixed(2)}
                 </span>
               </div>
             )}
@@ -459,6 +465,7 @@ export default function TradingJournal() {
                 {[...trades].reverse().map(t => {
                   const p = pnl(t);
                   const inst = INSTRUMENTS.find(i => i.value === t.instrument);
+                  const dir = (t.direction || "").trim().toLowerCase();
                   return (
                     <div key={t.id} style={{ background: "#0a1120", border: `1px solid ${p >= 0 ? "#0f2a1a" : "#2a0f0f"}`, borderRadius: 6, padding: "12px 16px" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8 }}>
@@ -466,7 +473,7 @@ export default function TradingJournal() {
                           <span style={{ color: "#64748b", fontSize: 11, marginRight: 10 }}>{t.date}</span>
                           <span style={{ color: "#e2e8f0", fontWeight: 600 }}>{t.instrument}</span>
                           <span style={{ fontSize: 10, color: "#475569", marginLeft: 6 }}>({inst?.type})</span>
-                          <span style={{ color: t.direction === "Long" ? "#22c55e" : "#f97316", marginLeft: 10, fontSize: 11, fontWeight: 700 }}>{t.direction}</span>
+                          <span style={{ color: dir === "long" ? "#22c55e" : "#f97316", marginLeft: 10, fontSize: 11, fontWeight: 700 }}>{t.direction}</span>
                           <span style={{ color: "#475569", marginLeft: 8, fontSize: 12 }}>×{t.contracts}</span>
                           <span style={{ color: "#334155", marginLeft: 10, fontSize: 11 }}>{t.strategy}</span>
                           <button onClick={() => { setChartSymbol(inst?.tvSymbol || chartSymbol); setActiveTab("dashboard"); }}
@@ -476,7 +483,7 @@ export default function TradingJournal() {
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                           <span style={{ fontFamily: "monospace", fontWeight: 700, fontSize: 15, color: p >= 0 ? "#22c55e" : "#ef4444" }}>
-                            {p >= 0 ? "+" : ""}${p.toFixed(2)}
+                            {p >= 0 ? "+" : "-"}${Math.abs(p).toFixed(2)}
                           </span>
                           <button onClick={() => handleEdit(t)} style={{ background: "transparent", border: "1px solid #1e293b", color: "#64748b", padding: "3px 10px", borderRadius: 3, fontFamily: "monospace", fontSize: 11, cursor: "pointer" }}>EDIT</button>
                           {deleteConfirm === t.id ? (
