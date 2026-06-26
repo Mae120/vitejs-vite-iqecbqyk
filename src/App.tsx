@@ -7,7 +7,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const GOAL = 9000;
 const MAX_LOSS = 3000;
-const MAX_MINIS = 6;
+const MAX_MINIS = 100;
 const MAX_MICROS = 60;
 
 interface Trade {
