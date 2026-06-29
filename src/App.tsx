@@ -284,7 +284,7 @@ export default function TradingJournal() {
       })}
     </select>
   );
-  const lbl = (text: string) => <div style={{ fontSize: 11, color: "#475569", fontFamily: "monospace", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>text</div>;
+  const lbl = (text: string) => <div style={{ fontSize: 11, color: "#475569", fontFamily: "monospace", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>{text}</div>;
   const tabBtn = (id: string, text: string) => (
     <button onClick={() => setActiveTab(id)} style={{ background: activeTab === id ? "#06b6d4" : "transparent", color: activeTab === id ? "#0f172a" : "#64748b", border: "none", padding: "8px 18px", borderRadius: 4, fontFamily: "monospace", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
       {text}
