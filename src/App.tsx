@@ -241,15 +241,17 @@ export default function TradingJournal() {
     if (inst?.type === "micro" && microUsed + Number(form.contracts) > MAX_MICROS) { alert(`Micro limit: max ${MAX_MICROS}/day`); return; }
     
     if (editId !== null) {
-      const { error } = await supabase.from('trades').update(form).eq('id', editId);
-      if (!error) {
+      const { data, error } = await supabase.from('trades').update(form).eq('id', editId).select();
+      if (!error && data) {
+        setTrades(prev => prev.map(t => t.id === editId ? (data[0] as Trade) : t));
         setEditId(null);
-        fetchTrades();
+        setActiveTab("history");
       }
     } else {
-      const { error } = await supabase.from('trades').insert([form]);
-      if (!error) {
-        fetchTrades();
+      const { data, error } = await supabase.from('trades').insert([form]).select();
+      if (!error && data) {
+        setTrades(prev => [data[0] as Trade, ...prev]);
+        setActiveTab("history");
       }
     }
     setForm(prev => ({ ...emptyForm, date: prev.date, instrument: prev.instrument }));
@@ -282,7 +284,7 @@ export default function TradingJournal() {
       })}
     </select>
   );
-  const lbl = (text: string) => <div style={{ fontSize: 11, color: "#475569", fontFamily: "monospace", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>{text}</div>;
+  const lbl = (text: string) => <div style={{ fontSize: 11, color: "#475569", fontFamily: "monospace", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>text</div>;
   const tabBtn = (id: string, text: string) => (
     <button onClick={() => setActiveTab(id)} style={{ background: activeTab === id ? "#06b6d4" : "transparent", color: activeTab === id ? "#0f172a" : "#64748b", border: "none", padding: "8px 18px", borderRadius: 4, fontFamily: "monospace", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
       {text}
