@@ -240,16 +240,27 @@ export default function TradingJournal() {
     if (inst?.type === "mini"  && miniUsed  + Number(form.contracts) > MAX_MINIS)  { alert(`Mini limit: max ${MAX_MINIS}/day`);  return; }
     if (inst?.type === "micro" && microUsed + Number(form.contracts) > MAX_MICROS) { alert(`Micro limit: max ${MAX_MICROS}/day`); return; }
     
+    // Create payload without 'id' to avoid updating it or causing bigint issues if handled as Omit<Trade, "id">
+    const { id, ...payload } = form as any;
+
     if (editId !== null) {
-      const { data, error } = await supabase.from('trades').update(form).eq('id', editId).select();
-      if (!error && data) {
+      const { data, error } = await supabase.from('trades').update(payload).eq('id', editId).select();
+      if (error) {
+        alert(`Update error: ${error.message}`);
+        return;
+      }
+      if (data) {
         setTrades(prev => prev.map(t => t.id === editId ? (data[0] as Trade) : t));
         setEditId(null);
         setActiveTab("history");
       }
     } else {
-      const { data, error } = await supabase.from('trades').insert([form]).select();
-      if (!error && data) {
+      const { data, error } = await supabase.from('trades').insert([payload]).select();
+      if (error) {
+        alert(`Insert error: ${error.message}`);
+        return;
+      }
+      if (data) {
         setTrades(prev => [data[0] as Trade, ...prev]);
         setActiveTab("history");
       }
